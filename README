@@ -1,19 +1,31 @@
-gnome-clock-screensaver
+simpleweather-screensaver
 =======================
 
-Cairo analog clock screensaver for GNOME.
+  Created by Sergey Zhumatiy (serg@guru.ru) 2011.
 
-This application is inspired and builds on AnClock by PT2K
-http://www.d8.dion.ne.jp/~pt2k/software/gnome-clock-screensaver/
+This application is based on Cairo analog clock screensaver for GNOME.
+(https://launchpad.net/gnome-clock-screensaver)
 
+Google weather service is used. Application cannot automatically detect
+your localtion (if you know how to do it - tell me, please).
+Use --area switch to set location (moscow,russia is default).
+
+
+This screensaver shows current playing song name/artist for any d-bus-enabled player.
+It shows ONLY songs, which were started while screensaver was started.
+
+Screensaver dims picture and text automatically in the night (from 20.00 to 7.00).
+You can change dim hours - see help.
 
 Installation
 ============
 
 See file INSTALL.
 
+If you use this screensaver in single mode, set /apps/gnome-screensaver/cycle_delay
+key in gconf into BIG value, e.g. 10000. It will prevent often restarts and songs
+names will be shown correctly.
 
-How to report bugs
-==================
 
-Report bugs in Launchpad: https://bugs.launchpad.net/gnome-clock-screensaver
+Requirements: gtk+-2.0 dbus-glib-1 dbus-1 glib-2.0, cairo.
+
