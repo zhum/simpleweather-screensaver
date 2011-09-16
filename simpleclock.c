@@ -483,6 +483,7 @@ static void correct_options (state *st)
 
 static void *clock_init (GtkWidget *window, GtkWidget *drawing_area)
 {
+    char  *env;
     state *st = (state *) calloc (1, sizeof (*st));
 
     st->window = window;
@@ -527,6 +528,12 @@ static void *clock_init (GtkWidget *window, GtkWidget *drawing_area)
     }
     if(WEATHER_AREA_a!=NULL){
       strncpy(WEATHER_AREA,WEATHER_AREA_a,MAX_BUF);
+    }
+    else{
+      env=getenv("SIMPLEWEATHER_LOCATION");
+      if(env!=NULL){
+        strncpy(WEATHER_AREA,env,MAX_BUF);
+      }
     }
 
     st->marks_colour.red   = 0xffff;

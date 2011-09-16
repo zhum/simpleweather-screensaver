@@ -10,7 +10,7 @@
 #include "simpleclock.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
-#define DEBUG
+//#define DEBUG
 
 #include <pthread.h>
 

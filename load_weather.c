@@ -10,7 +10,7 @@
 
 #define BUFSIZE (1024*10)
 
-#define DEBUG 1
+//#define DEBUG 1
 
 #define BASE_URL "http://www.google.com"
 #define BASE_LEN 22

@@ -8,8 +8,12 @@ This application is based on Cairo analog clock screensaver for GNOME.
 
 Google weather service is used. Application cannot automatically detect
 your localtion (if you know how to do it - tell me, please).
-Use --area switch to set location (moscow,russia is default).
+Use --area switch to set location (moscow,russia is default) or set
+in your ~/.bashrc file SIMPLEWEATHER_LOCATION variable. Such as:
 
+export SIMPLEWEATHER_LOCATION='tokyo,japan'
+
+You must restart your gnome session after editing for this variable works.
 
 This screensaver shows current playing song name/artist for any d-bus-enabled player.
 It shows ONLY songs, which were started while screensaver was started.
