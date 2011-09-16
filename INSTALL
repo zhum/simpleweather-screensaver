@@ -1,0 +1,5 @@
+Installation Instruction
+========================
+
+The shell commands `make; make install' should build and install this package.
+Fix Makefile in accordance with your environment.

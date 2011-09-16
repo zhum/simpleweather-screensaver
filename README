@@ -1,0 +1,19 @@
+gnome-clock-screensaver
+=======================
+
+Cairo analog clock screensaver for GNOME.
+
+This application is inspired and builds on AnClock by PT2K
+http://www.d8.dion.ne.jp/~pt2k/software/gnome-clock-screensaver/
+
+
+Installation
+============
+
+See file INSTALL.
+
+
+How to report bugs
+==================
+
+Report bugs in Launchpad: https://bugs.launchpad.net/gnome-clock-screensaver
