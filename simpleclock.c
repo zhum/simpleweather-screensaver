@@ -1,4 +1,5 @@
 /* simpleclock.c                                                       */
+/* Copyright (C) 2011 Sergey Zhumatiy <serg@guru.ru>                   */
 /* Copyright (C) 2010 Sebastian Brady <seb@cobwebs.id.au>              */
 
 /* This program is free software; you can redistribute it and/or       */
@@ -19,7 +20,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <math.h>
+#include <ctype.h>
 #include <sysexits.h>
 #include <cairo.h>
 #include <string.h>
@@ -30,11 +33,22 @@
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
 #include <glib.h>
+#include <gdk/gdkx.h>
 
 #define MAX_STR_LEN 256
 
 #define ALBUM_STRING "album"
 #define TITLE_STRING "title"
+#define ARTIST_STRING "artist"
+#define LOC_STRING   "location"
+#define ALBUM_STRING2 "xesam:album"
+#define TITLE_STRING2 "xesam:title"
+#define ARTIST_STRING2 "xesam:artist"
+
+#define i_random(i) (g_random_int_range(0,(i)))
+#define i_round(x)  ((int)(((double)x)+0.5))
+
+
 static DBusHandlerResult
    signal_filter( DBusConnection *connection,
                  DBusMessage *message,
@@ -83,6 +97,7 @@ extern char FONT_FACE_CLOCK[];
 extern char WEATHER_AREA[];
 extern char album[];
 extern char title[];
+extern char artist[];
 extern int now_playing_changed;
 extern int np_speed;
 
@@ -142,213 +157,9 @@ static GOptionEntry options[] = {
 
 static char *parameter_string = "";
 
-/* type definitions */
-enum HAND_TYPE {htSECOND, htMINUTE, htHOUR, htMAX};
-enum HAND_VERTEX_TYPE {hvAPEX, hvRIGHT, hvBOTTOM, hvLEFT, hvMAX};
-
-/* parameter settings */
-
-/* ratio definitions [%] */
-static const double mark_outer_ratio    = 100;
-static const double mark_inner_ratio    =  96;
-static const double index_outer_ratio   = 100;
-static const double index_inner_ratio   =  90;
-static const double hand_radius_ratios[htMAX][hvMAX] = {
-  {95, 29, 30, 29}, /* Sec  */
-  {92,  3, 15,  3}, /* Min  */
-  {65,  4, 15,  4}  /* Hour */
-};
-static const double centre_circle_ratio  =  2;
-
-/* angle definitions [degree] */
-static const double index_arc_angle = 0.6;
-static const double hand_vertex_angles[htMAX][hvMAX] = {
-  {0, 178, 180, 182}, /* Sec  */
-  {0,  54, 180, 306}, /* Min  */
-  {0,  54, 180, 306}  /* Hour */
-};
-
-/* color range settings */
-//static ushort high_color_default = 0xF000;
-//static ushort mid_color_default  = 0xE000;
-//static ushort low_color_default  = 0xD000;
-//static ushort color_step_default = 0x0010;
-
-/* function macros */
-#define i_random(i) (g_random_int_range(0,(i)))
-#define i_round(x)  ((int)(((double)x)+0.5))
-#define d_sin(x)    (sin(2*M_PI*(x)/360))
-#define d_cos(x)    (cos(2*M_PI*(x)/360))
-#define min(x,y)    (((x)<(y))?(x):(y))
-
 void draw_clock(state*);
 void draw_weather(state*);
 int init_weather(state *st);
-
-#if 0
-/*
- * Draw the minutes marks on the clock face.
- */
-static void draw_minutes(state *st)
-{
-    int    i, j;
-    double outer_radius, inner_radius;
-    double theta;
-    double sin_theta, cos_theta;
-    int    x1, y1, x2, y2, x0, y0, rel_x1, rel_x2, rel_y1, rel_y2;
-
-    outer_radius = st->radius * mark_outer_ratio / 100;
-    inner_radius = st->radius * mark_inner_ratio / 100;
-
-    // for (minute = 0; minute < 60; minute++) {
-    for (i = 0; i < 90; i = i + 30) {
-        for (j = 1; j < 5; j++) {
-            theta = j * 6 + i;
-            sin_theta = d_sin(theta);
-            cos_theta = d_cos(theta);
-            rel_x1 = outer_radius * sin_theta;
-            rel_y1 = outer_radius * cos_theta;
-            rel_x2 = inner_radius * sin_theta;
-            rel_y2 = inner_radius * cos_theta;
-            x1 = i_round(st->centre.x + outer_radius * sin_theta);
-            y1 = i_round(st->centre.y - outer_radius * cos_theta);
-            x2 = i_round(st->centre.x + inner_radius * sin_theta);
-            y2 = i_round(st->centre.y - inner_radius * cos_theta);
-            x0 = st->centre.x;
-            y0 = st->centre.y;
-
-            cairo_move_to(st->cr, i_round(x0 + rel_x1), i_round(y0 - rel_y1));
-            cairo_line_to(st->cr, i_round(x0 + rel_x2), i_round(y0 - rel_y2));
-            cairo_move_to(st->cr, i_round(x0 - rel_x1), i_round(y0 - rel_y1));
-            cairo_line_to(st->cr, i_round(x0 - rel_x2), i_round(y0 - rel_y2));
-            cairo_move_to(st->cr, i_round(x0 + rel_x1), i_round(y0 + rel_y1));
-            cairo_line_to(st->cr, i_round(x0 + rel_x2), i_round(y0 + rel_y2));
-            cairo_move_to(st->cr, i_round(x0 - rel_x1), i_round(y0 + rel_y1));
-            cairo_line_to(st->cr, i_round(x0 - rel_x2), i_round(y0 + rel_y2));
-
-            cairo_stroke(st->cr);
-        }
-    }
-}
-
-
-/*
- * Draw the hour marks on the clock face.
- */
-static void draw_hours(state *st)
-{
-    int      hour;
-    double   outer_radius, inner_radius, height, width, offset;
-    double   rad;
-
-    outer_radius = st->radius * index_outer_ratio / 100;
-    inner_radius = st->radius * index_inner_ratio / 100;
-    height = outer_radius - inner_radius;
-    width = height / 4;
-    offset = width / 2 * -1;
-    cairo_save(st->cr);
-    cairo_set_line_width(st->cr, 1);
-
-    cairo_translate(st->cr, st->centre.x, st->centre.y);
-    rad = ((2 * M_PI) / 12.0);
-    for (hour = 0; hour < 3; hour++) {
-
-        cairo_rotate(st->cr, rad);
-        cairo_rectangle(st->cr, offset, outer_radius * -1, width, height);
-        cairo_rectangle(st->cr, outer_radius, offset, height * -1, width);
-        cairo_rectangle(st->cr, offset, outer_radius, width, height * -1);
-        cairo_rectangle(st->cr, outer_radius * -1, offset, height, width);
-
-        if (!st->wireframe) {
-
-            cairo_fill_preserve(st->cr);
-        }
-
-        cairo_stroke(st->cr);
-    }
-
-    cairo_restore(st->cr);
-}
-
-
-/*
- * Draw a clock hand.
- */
-static void draw_hand(state *st, enum HAND_TYPE ht, double theta)
-/* theta [degree] */
-{
-    enum HAND_VERTEX_TYPE hv;
-    double   hand_radius;
-    GdkPoint hand_vertexes[hvMAX + 1];
-
-    for (hv = 0; hv < hvMAX; hv++) {
-        hand_radius = st->radius * hand_radius_ratios[ht][hv] / 100;
-        hand_vertexes[hv].x =
-            i_round (st->centre.x +
-                     hand_radius *
-                     d_sin (theta + hand_vertex_angles[ht][hv]));
-        hand_vertexes[hv].y =
-            i_round (st->centre.y -
-                     hand_radius *
-                     d_cos (theta + hand_vertex_angles[ht][hv]));
-        cairo_line_to(st->cr, hand_vertexes[hv].x, hand_vertexes[hv].y );
-    }
-
-    hand_vertexes[hvMAX].x = hand_vertexes[0].x;
-    hand_vertexes[hvMAX].y = hand_vertexes[0].y;
-    cairo_line_to(st->cr, hand_vertexes[0].x, hand_vertexes[0].y);
-
-    if (!st->wireframe) {
-
-        set_colour(st, st->fill_colour);
-        cairo_fill_preserve(st->cr);
-        cairo_save(st->cr);
-        set_colour(st, st->line_colour);
-        cairo_set_line_width(st->cr, 1);
-        cairo_stroke(st->cr);
-        cairo_restore(st->cr);
-
-    } else {
-
-        cairo_stroke(st->cr);
-    }
-}
-
-
-
-
-/*
- * Draws the centre circle in the clock face.
- */
-static void draw_centre_circle (state *st)
-{
-
-    double circle_radius;
-    int    x, y, w, h, r;
-
-    circle_radius = st->radius * centre_circle_ratio / 100;
-    x = i_round(st->centre.x);
-    y = i_round(st->centre.y);
-    w = h = i_round (circle_radius * 2);
-    r = w / 2;
-
-    cairo_arc(st->cr, x, y, circle_radius, 0, 2 * M_PI);
-    if (!st->wireframe) {
-
-        set_colour(st, st->fill_colour);
-        cairo_fill_preserve (st->cr);
-        set_colour(st, st->line_colour);
-        cairo_stroke (st->cr);
-
-    } else {
-
-        set_colour(st, st->fill_colour);
-        cairo_fill_preserve (st->cr);
-        set_colour(st, st->line_colour);
-        cairo_stroke (st->cr);
-    }
-}
-#endif
 
 static void draw_all(state *st){
 
@@ -547,22 +358,24 @@ static void *clock_init (GtkWidget *window, GtkWidget *drawing_area)
     st->fill_colour.red    = 0xFFFF;
     st->fill_colour.green  = 0xFFFF;
     st->fill_colour.blue   = 0xFFFF;
-#if 0
-    st->radius = min(st->width, st->height) / 2.0 * st->size / 100;
-    if (st->pin) {
-        st->centre.x = i_round(st->width  / 2.0);
-        st->centre.y = i_round(st->height / 2.0);
-    } else {
-        st->centre.x = i_round(st->radius) +
-            i_random (i_round(st->width  - st->radius * 2));
-        st->centre.y = i_round(st->radius) +
-            i_random (i_round(st->height - st->radius * 2));
-    }
-#endif
     st->orient.x = i_random(2) * 2 - 1;
     st->orient.y = i_random(2) * 2 - 1;
 
     return st;
+}
+
+/* Report data */
+static void w_configure_event (GtkWidget *widget, GdkEventConfigure *event,
+                             gpointer data)
+{
+/*
+    state *st = (state *) data;
+
+    Window ww=GDK_WINDOW_XID(GDK_DRAWABLE(widget->window));
+
+    printf("%ld,%ld\n",(long)getpid(),(long)ww);
+    fflush(stdout);
+*/
 }
 
 /* Set up the widget for drawing. */
@@ -571,25 +384,23 @@ static void configure_event (GtkWidget *widget, GdkEventConfigure *event,
 {
     state *st = (state *) data;
 
+
+//    GdkDisplay *display = gtk_widget_get_display (widget);
+//    Display   *xdisplay = GDK_DISPLAY_XDISPLAY (display);
+
+    Window ww=GDK_WINDOW_XID(GDK_DRAWABLE(widget->window));
+
+    printf("%ld,%ld\n",(long)getpid(),(long)ww);
+    fflush(stdout);
+
     st->width  = widget->allocation.width;
     st->height = widget->allocation.height;
-//    st->radius = min (st->width, st->height) / 2.0 * st->size / 100;
 
     if (st->pin) {
         st->x = i_round(st->width  / 2.0);
         st->y = i_round(st->height / 2.0);
     } else {
       st->x=st->y=0;
-      /*
-        if (st->x - st->radius < 0)
-            st->x = i_round (st->radius);
-        if (st->width < st->centre.x + st->radius)
-            st->centre.x = st->width - i_round (st->radius);
-        if (st->centre.y - st->radius < 0)
-            st->centre.y = i_round (st->radius);
-        if (st->height < st->centre.y + st->radius)
-            st->centre.y = st->height - i_round (st->radius);
-      */
     }
 }
 
@@ -643,6 +454,23 @@ static void quit_app(GtkWidget *widget, gpointer data)
   g_main_loop_quit(loop);
 }
 
+//#define GIFS_DIR "GIFS"
+
+void copy_gifs(){
+  char path[1024];
+  char exe[2048];
+  struct stat s;
+
+  strncpy(path,getenv("HOME"),1024);
+  strncat(path,"/.cache/simpleweather/",1024);
+  stat(path,&s);
+  if(! S_ISDIR(s.st_mode)){
+    mkdir(path,0700);
+  }
+  sprintf(exe,"cp -n %s/*.gif %s",GIFS_DIR,path);
+  system(exe);
+}
+
 int main (int argc, char **argv)
 {
     state     *st;
@@ -651,10 +479,6 @@ int main (int argc, char **argv)
 
     GError    *error = NULL;
 
-/*
-    GMainLoop *loop;
-    DBusConnection *bus;
-*/
     DBusError dbus_error;
 
     gtk_set_locale();
@@ -672,6 +496,7 @@ int main (int argc, char **argv)
         return EX_SOFTWARE;
     }
 
+    copy_gifs();
     get_time_str();
     window = gs_theme_window_new();
     drawing_area = gtk_drawing_area_new();
@@ -683,11 +508,7 @@ int main (int argc, char **argv)
 
     gtk_widget_show(window);
 
-/*
-    g_signal_connect(G_OBJECT (window), "delete-event",
-                     G_CALLBACK (gtk_main_quit), NULL);
-*/
-   loop = g_main_loop_new (NULL, FALSE);
+    loop = g_main_loop_new (NULL, FALSE);
 
     dbus_error_init (&dbus_error);
     bus = dbus_bus_get (DBUS_BUS_SESSION, &dbus_error);
@@ -700,6 +521,7 @@ int main (int argc, char **argv)
 
     /* listening to messages from all objects as no path is specified */
     dbus_bus_add_match (bus, "type='signal',interface='org.freedesktop.MediaPlayer'", &dbus_error);
+    dbus_bus_add_match (bus, "type='signal',interface='org.freedesktop.DBus.Properties'", &dbus_error);
     dbus_connection_add_filter (bus, signal_filter, loop, NULL);
 
 
@@ -710,13 +532,14 @@ int main (int argc, char **argv)
     g_signal_connect(GTK_OBJECT (drawing_area), "expose_event",
                      GTK_SIGNAL_FUNC (expose_event), st);
 
+    g_signal_connect(GTK_OBJECT (window), "configure_event",
+                     GTK_SIGNAL_FUNC (w_configure_event), st);
+
     g_random_set_seed(time (NULL));
 
     st->timer_id = g_timeout_add_seconds(1, clock_timer, st);
 
-    //gtk_main ();
     g_main_loop_run (loop);
-//    dbus_connection_close(bus);
 
     clock_free (st);
 
@@ -737,12 +560,13 @@ signal_filter (DBusConnection *connection, DBusMessage *message, void *user_data
     /* We have handled this message, don't pass it on */
     return DBUS_HANDLER_RESULT_HANDLED;
   }
-  /* A Ping signal on the com.burtonini.dbus.Signal interface */
-  else if (dbus_message_is_signal (message, "org.freedesktop.MediaPlayer", "TrackChange")) {
+  else if (dbus_message_is_signal (message, "org.freedesktop.MediaPlayer", "TrackChange") ||
+           dbus_message_is_signal (message, "org.freedesktop.DBus.Properties", "PropertiesChanged")) {
     DBusError error;
     DBusMessageIter iter;
     dbus_error_init (&error);
 
+    mylog("DBUS>> GOT SIGNAL!!!\n");
     dbus_message_iter_init (message, &iter);
     last_string[0]='\0';
     varian_now=0;
@@ -752,9 +576,71 @@ signal_filter (DBusConnection *connection, DBusMessage *message, void *user_data
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
+
+/**********************************************
+/  (c) http://www.geekhideout.com/urlcode.shtml
+**********************************************/
+/* Converts a hex character to its integer value */
+char from_hex(char ch) {
+  return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
+}
+
+/* Converts an integer value to its hex character*/
+char to_hex(char code) {
+  static char hex[] = "0123456789abcdef";
+  return hex[code & 15];
+}
+
+/* Returns a url-encoded version of str */
+/* IMPORTANT: be sure to free() the returned string after use */
+char *url_encode(const char *str) {
+  const char *pstr = str; 
+  char *buf = malloc(strlen(str) * 3 + 1), *pbuf = buf;
+  while (*pstr) {
+    if (isalnum(*pstr) || *pstr == '-' || *pstr == '_' || *pstr == '.' || *pstr == '~') 
+      *pbuf++ = *pstr;
+    else if (*pstr == ' ') 
+      *pbuf++ = '+';
+    else 
+      *pbuf++ = '%', *pbuf++ = to_hex(*pstr >> 4), *pbuf++ = to_hex(*pstr & 15);
+    pstr++;
+  }
+  *pbuf = '\0';
+  return buf;
+}
+
+/* Returns a url-decoded version of str */
+/* IMPORTANT: be sure to free() the returned string after use */
+char *url_decode(const char *str) {
+  const char *pstr = str;
+  char *buf = malloc(strlen(str) + 1), *pbuf = buf;
+  while (*pstr) {
+    if (*pstr == '%') {
+      if (pstr[1] && pstr[2]) {
+        *pbuf++ = from_hex(pstr[1]) << 4 | from_hex(pstr[2]);
+        pstr += 2;
+      }
+    } else if (*pstr == '+') { 
+      *pbuf++ = ' ';
+    } else {
+      *pbuf++ = *pstr;
+    }
+    pstr++;
+  }
+  *pbuf = '\0';
+  return buf;
+}
+/***********************************************
+/  end (c) code
+***********************************************/
+
+
 static void
 do_iter (DBusMessageIter *iter)
 {
+  static struct timeval album_time={0,0}, artist_time={0,0}, title_time={0,0}, now_time={0,0};
+  char *decoded;
+  int pos, len, i;
 	do
 		{
 			int type = dbus_message_iter_get_arg_type (iter);
@@ -768,13 +654,43 @@ do_iter (DBusMessageIter *iter)
 				case DBUS_TYPE_STRING:
 					dbus_message_iter_get_basic (iter, &str);
           if(varian_now){
-            mylog(">>>>>>> %s : '%s'\n",last_string,str);
-            if(strcmp(ALBUM_STRING,last_string)==0){
+            gettimeofday(&now_time,NULL);
+            mylog("DBUS>> %s : '%s'\n",last_string,str);
+            if((strcmp(ALBUM_STRING,last_string)==0) || (strcmp(ALBUM_STRING2,last_string)==0)){
               strncpy(album,str,MAX_STR_LEN);
               now_playing_changed=1;
+              if(now_time.tv_sec-artist_time.tv_sec>DBUS_INTERVAL) artist[0]='\0';
+              if(now_time.tv_sec-title_time.tv_sec >DBUS_INTERVAL) title[0]='\0';
+              album_time.tv_sec=now_time.tv_sec;
+              mylog("DBUS>> ALBUM='%s'\n",str);
             }
-            else if(strcmp(TITLE_STRING,last_string)==0){
+            else if((strcmp(TITLE_STRING,last_string)==0) || (strcmp(TITLE_STRING2,last_string)==0)){
               strncpy(title,str,MAX_STR_LEN);
+              now_playing_changed=1;
+              if(now_time.tv_sec-artist_time.tv_sec>DBUS_INTERVAL) artist[0]='\0';
+              if(now_time.tv_sec-album_time.tv_sec >DBUS_INTERVAL) album[0]='\0';
+              title_time.tv_sec=now_time.tv_sec;
+              mylog("DBUS>> TITLE='%s'\n",str);
+            }
+            else if((strcmp(ARTIST_STRING,last_string)==0) || (strcmp(ARTIST_STRING2,last_string)==0)){
+              strncpy(artist,str,MAX_STR_LEN);
+              now_playing_changed=1;
+              if(now_time.tv_sec-album_time.tv_sec>DBUS_INTERVAL) album[0]='\0';
+              if(now_time.tv_sec-title_time.tv_sec>DBUS_INTERVAL) title[0]='\0';
+              artist_time.tv_sec=now_time.tv_sec;
+              mylog("DBUS>> ARTIST='%s'\n",str);
+            }
+            else if((now_playing_changed==0) &&
+                    (strcmp(LOC_STRING,last_string)==0)){
+              decoded=url_decode(str);
+              len=strlen(decoded);
+              pos=0;
+              for(i=0;i<len;++i){
+                if(decoded[i]=='/')
+                  pos=i+1;
+              }
+              strncpy(title,decoded+pos,MAX_STR_LEN);
+              free(decoded);
               now_playing_changed=1;
             }
           }

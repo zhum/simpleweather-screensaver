@@ -1,6 +1,12 @@
 #ifndef SIMPLECLOCK_H
 #define SIMPLECLOCK_H
 
+#include <cairo.h>
+#include <gdk/gdkx.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
+#include <gtk/gtk.h>
+
+
 typedef int               boolean;
 typedef unsigned short    ushort;
 typedef unsigned long     ulong;
@@ -20,6 +26,8 @@ typedef struct {
 
 #define MAX_BUF 512
 
+#define DBUS_INTERVAL 3
+
 struct  weather_image_t {
     GdkPixbuf       *image;
     char            *name;
@@ -27,9 +35,10 @@ struct  weather_image_t {
 
 
 typedef struct {
-    char *now_weather_text;
-    char *today_forecast_text;
-    char *tomorrow_forecast_text;
+    const char *now_weather_text;
+    const char *today_forecast_text;
+    const char *tomorrow_forecast_text;
+
 
     char *now_weather_text1;
     char *today_forecast_text1;
@@ -37,6 +46,7 @@ typedef struct {
     char *now_weather_text2;
     char *today_forecast_text2;
     char *tomorrow_forecast_text2;
+
 
     int  now_image_index;
     int  today_image_index;

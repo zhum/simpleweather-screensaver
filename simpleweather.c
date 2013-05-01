@@ -1,3 +1,6 @@
+#include <locale.h>
+#include <wchar.h>
+#include <iconv.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
@@ -21,11 +24,13 @@
 #define WEATHER_IMAGE_CHECKERS_COLOR  0
 #define MAX_TIME_STR 256
 #define UNKNOWN_TEXT "?"
+#define TM_STR "Yahoo! Weather"
 
 #define max(x,y) ((x>y)?(x):(y))
 
 #define unknown_string "Unknown..."
 
+#define SLEEP_INT_SEC 5
 
 static int def_weather_height=1024;
 static int def_weather_width=768;
@@ -34,6 +39,7 @@ static char      *NULL_STR="";
 //double FONT_R=0.85;
 //double FONT_G=0.85;
 //double FONT_B=0.85;
+double TM_FONT_SIZE=10.0;
 double WEATHER_FONT_SIZE=25.0;
 double WEATHER_BIG_FONT_SIZE=35.0;
 double WEATHER_CLOCK_FONT_SIZE=50.0;
@@ -41,7 +47,8 @@ int WEATHER_IMAGE_ALPHA=100;
 int WEATHER_IMAGE_NOALPHA=255;
 char FONT_FACE[MAX_BUF]="Sans";
 char FONT_FACE_CLOCK[MAX_BUF]="Courier";
-char WEATHER_AREA[MAX_BUF]="moscow,russia";
+char WEATHER_AREA[MAX_BUF]="2122265";
+//-> for google "moscow,russia";
 
 int np_speed=6;
 
@@ -56,7 +63,7 @@ int update_images(weather_t *);
 void init_cache_path(void);
 void create_unknown_image(GdkPixbuf *image);
 void count_clock_height(state *st);
-char *read_now_playing(void);
+wchar_t *read_now_playing(void);
 
 pthread_t weather_thread;
 pthread_mutex_t WEATHER_LOCK;
@@ -67,7 +74,8 @@ struct tm *time_now;
 
 int get_image_alpha(void){
 
-return (time_now->tm_hour<=MIN_TINT_HOUR || time_now->tm_hour>=MAX_TINT_HOUR)?
+  return (time_now->tm_hour<=MIN_TINT_HOUR ||
+          time_now->tm_hour>=MAX_TINT_HOUR)?
         WEATHER_IMAGE_ALPHA:WEATHER_IMAGE_NOALPHA;
 }
 
@@ -111,12 +119,16 @@ void set_colour(cairo_t *cr, GdkColor colour, double alpha)
 }
 
 void mysleep(long time){
-  int i;
+  int i,alpha;
   /* sleep ... */
-  for(i=0;i<time; ++i){
+  alpha=get_image_alpha();
+  for(i=0;i<time; i+=SLEEP_INT_SEC){
     pthread_testcancel();
-    sleep(1);
+    sleep(SLEEP_INT_SEC);
     pthread_testcancel();
+    if(alpha != get_image_alpha()){ /* update image! don't sleep! */
+      return;
+    }
   }
 }
 
@@ -295,11 +307,12 @@ int finalize_weather(){
 
 void draw_weather(state *st){
     cairo_text_extents_t extents;
-    char *time_str;
-    char np[MAX_BUF],*np_read;
+    char *time_str,utf_np[MAX_BUF*8];
+    wchar_t np[MAX_BUF*2],*np_read;
     int len;
     static int pos=0;
-    static struct timeval tv_old={0,0},tv_now;
+    static struct timeval tv_now;
+    //tv_old={0,0}
 
     pthread_mutex_lock(&WEATHER_LOCK);
 
@@ -323,21 +336,32 @@ void draw_weather(state *st){
     gettimeofday(&tv_now,NULL);
 
     np_read=read_now_playing();
-    strncpy(np,np_read,MAX_BUF-1);
-    len=strlen(np);
-    np[len]='|';
-    strncpy(np+len+1,np_read,MAX_BUF-len-2);
-    np[MAX_BUF-1]='\0';
+    wcsncpy(np,np_read,MAX_BUF*2-1);
+    wcsncat(np,L" |",MAX_BUF*2-1);
+    len=wcslen(np);
+//    np[len]=L'|';
+//    strncpy(np+len+1,np_read,MAX_BUF-len-2);
+    wcsncat(np,np_read,MAX_BUF*2-1);
+//    np[MAX_BUF-1]='\0';
 
-    pos=(tv_now.tv_sec*10+(tv_now.tv_usec/100000))/np_speed % (len>0?len:1);
+    pos=(tv_now.tv_sec*10+(tv_now.tv_usec/100000))/np_speed % (len>2?len:1);
 
 //    if(pos>=len)
 //      pos=0;
-    np[pos+len]='\0';
+    np[pos+len]=L'\0';
 
+    wcstombs(utf_np,np+pos,MAX_BUF*8);
     cairo_move_to (st->cr, st->x+(st->weather_width-extents.width)/2,
                            st->y+WEATHER_IMAGE_H*5/2+extents.height);
-    cairo_text_path (st->cr, np+pos);
+    cairo_text_path (st->cr, utf_np);
+
+
+
+    cairo_set_font_size (st->cr, TM_FONT_SIZE);
+    cairo_text_extents (st->cr, TM_STR, &extents);
+    cairo_move_to (st->cr, st->x+WEATHER_IMAGE_W,
+                           st->y+WEATHER_IMAGE_H-extents.height);
+    cairo_text_path (st->cr, TM_STR);
 /*
     if((tv_now.tv_sec>tv_old.tv_sec)){
       pos+=1;
@@ -356,7 +380,7 @@ void draw_weather(state *st){
 }
 
 void prepare_weather_image(state *st){
-    int              w, h, x, y;
+    int              x, y;
     GdkPixbuf        *image, *image1, *image2;
     GdkPixbuf        *scaled_image;
     cairo_text_extents_t extents;
@@ -382,8 +406,8 @@ void prepare_weather_image(state *st){
     image1 = weather_images_cache[st->weather.today_image_index].image;
     image2 = weather_images_cache[st->weather.tomorrow_image_index].image;
 
-    w = gdk_pixbuf_get_width(image);
-    h = gdk_pixbuf_get_height(image);
+    //!!w = gdk_pixbuf_get_width(image);
+    //!!h = gdk_pixbuf_get_height(image);
 
     cr = cairo_create(sf0);
 
@@ -525,7 +549,7 @@ char *get_time_str(void)
   t = time(NULL);
   time_now = localtime(&t);
   if (time_now == NULL) {
-    perror("localtime");
+    perror("Cannot get localtime");
     exit(1);
   }
 
