@@ -22,7 +22,7 @@ OBJECTS = $(SOURCES:.c=.o)
 CFLAGS = `${PKG_CONFIG} ${GTK_METADATA} --cflags` -Wall -I. -I./libmxml/include -DGIFS_DIR=\"${SAVER_SHARE_DIR}\"
 LIBS   = `${PKG_CONFIG} ${GTK_METADATA} --libs` -lcurl ./libmxml/lib/libmxml.a
 
-$(TARGET): $(OBJECTS) ./libmxml/lib/libmxml.a weather_strings.h config.h  gs-theme-window.h  simpleclock.h
+$(TARGET): $(OBJECTS) ./libmxml/lib/libmxml.a weather_strings.h config.h simpleclock.h
 	$(CC) $(CFLAGS) $(EXTRAFLAGS) -o $@ $(OBJECTS) $(LIBS)
 .c.o:
 	$(CC) $(CFLAGS) $(EXTRAFLAGS) -c $< -o $@

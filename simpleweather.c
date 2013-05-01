@@ -9,7 +9,7 @@
 #include <sysexits.h>
 #include <cairo.h>
 #include <string.h>
-#include "gs-theme-window.h"
+//#include "gs-theme-window.h"
 #include "simpleclock.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
@@ -346,9 +346,10 @@ void draw_weather(state *st){
 
     pos=(tv_now.tv_sec*10+(tv_now.tv_usec/100000))/np_speed % (len>2?len:1);
 
-//    if(pos>=len)
-//      pos=0;
-    np[pos+len]=L'\0';
+    if(len<3)
+      np[0]=L'\0';
+    else
+      np[pos+len]=L'\0';
 
     wcstombs(utf_np,np+pos,MAX_BUF*8);
     cairo_move_to (st->cr, st->x+(st->weather_width-extents.width)/2,
