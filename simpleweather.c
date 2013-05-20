@@ -140,7 +140,9 @@ void mysleep(long time,state *st){
     sleep(SLEEP_INT_SEC);
     pthread_testcancel();
     if(alpha != get_image_alpha()){ /* update image! don't sleep! */
+      pthread_mutex_lock(&WEATHER_LOCK);
       prepare_weather_image(st);
+      pthread_mutex_unlock(&WEATHER_LOCK);
       return;
     }
   }
@@ -329,8 +331,8 @@ void draw_weather(state *st){
     static long pos=0;
     static struct timeval tv_now;
 
-    static double colon_color[10]={0.0, 0.0, 0.1, 0.5, 1.0,
-                                   0.9, 0.9, 0.9, 0.1, 0.0};
+    static double colon_color[10]={0.1, 0.1, 0.0, 0.0, 1.0,
+                                   0.5, 0.8, 0.8, 0.8, 0.2};
     //tv_old={0,0}
 
     gettimeofday(&tv_now,NULL);
