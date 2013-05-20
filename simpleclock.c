@@ -53,8 +53,7 @@ static DBusHandlerResult
    signal_filter( DBusConnection *connection,
                  DBusMessage *message,
                  void *user_data);
-static void
-do_iter (DBusMessageIter *iter);
+static void do_iter (DBusMessageIter *iter);
 
 static char last_string[MAX_STR_LEN]="";
 static int  varian_now=0;
@@ -71,20 +70,21 @@ static boolean  wireframe   = FALSE;
 static boolean  hide_index  = FALSE;
 static boolean  hide_mark   = FALSE;
 static boolean  hide_second = FALSE;
-static double   speed       = 2;
+static double   speed       = 6;
 static boolean  randomize   = FALSE;
-static double   y_rand_factor=1;
-static double   x_rand_factor=1;
+static double   y_rand_factor=1.0;
+static double   x_rand_factor=1.0;
 
 char   charset[MAX_STR_LEN];
 
 extern int WEATHER_IMAGE_H, WEATHER_IMAGE_W;
-extern char *get_time_str(void);
 
-#define SLEEP_TIME 100
+char *get_time_str(void);
+
+#define SLEEP_TIME 50
 #define MAX_TIME_STR 64
 
-extern void draw_weather(state *st);
+//extern void draw_weather(state *st);
 extern int MIN_TINT_HOUR;
 extern int MAX_TINT_HOUR;
 extern double WEATHER_FONT_SIZE;
@@ -100,12 +100,15 @@ extern char title[];
 extern char artist[];
 extern int now_playing_changed;
 extern int np_speed;
+extern int now_playing_height;
 
 gchar *FONT_FACE_a=NULL;
 gchar *FONT_FACE_CLOCK_a=NULL;
 gchar *WEATHER_AREA_a=NULL;
 gchar *face_spec_a=NULL;
 gchar *charset_opt_a=NULL;
+
+static double speed_factor=0.2;
 
 
 void mylog(char *s, ...);
@@ -133,7 +136,7 @@ static GOptionEntry options[] = {
   {"area",               'a', 0, G_OPTION_ARG_STRING,   &WEATHER_AREA_a,
    "Weather area (def moscow,russia)",         NULL},
   {"speed",              'p', 0, G_OPTION_ARG_DOUBLE, &speed,
-   "Moving speed (def 2)",                     NULL},
+   "Moving speed (def 5)",                     NULL},
   {"randomize",          'z', 0, G_OPTION_ARG_NONE,   &randomize,
    "Randomize speed",                          NULL},
   {"face-color",         'r', 0, G_OPTION_ARG_STRING, &face_spec_a,
@@ -221,12 +224,12 @@ static void move_clock (state *st)
     st->orient.y =  1;
     new_random_factors();
   }
-  if (st->height <= st->y + st->weather_height){
+  if (st->height <= st->y + st->weather_height + now_playing_height){
     st->orient.y = -1;
     new_random_factors();
   }
-  st->x += st->orient.x*speed*x_rand_factor;
-  st->y += st->orient.y*speed*y_rand_factor;
+  st->x += st->orient.x*speed*speed_factor*x_rand_factor;
+  st->y += st->orient.y*speed*speed_factor*y_rand_factor;
 }
 
 

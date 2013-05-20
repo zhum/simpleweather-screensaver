@@ -36,6 +36,12 @@ static int def_weather_height=1024;
 static int def_weather_width=768;
 static char      *NULL_STR="";
 
+struct char2 {
+  char str1[MAX_TIME_STR];
+  char str2[8];
+};
+
+
 //double FONT_R=0.85;
 //double FONT_G=0.85;
 //double FONT_B=0.85;
@@ -51,6 +57,7 @@ char WEATHER_AREA[MAX_BUF]="2122265";
 //-> for google "moscow,russia";
 
 int np_speed=6;
+int now_playing_height=0;
 
 int MIN_TINT_HOUR=6;
 int MAX_TINT_HOUR=22;
@@ -309,15 +316,22 @@ void draw_weather(state *st){
     cairo_text_extents_t extents;
     char *time_str,utf_np[MAX_BUF*8];
     wchar_t np[MAX_BUF*2],*np_read;
-    int len;
-    static int pos=0;
+    wchar_t first_char[2];
+    int len,text_x,text_y;
+    double shift,np_width_one;
+    static long pos=0;
     static struct timeval tv_now;
+
+    static double colon_color[10]={0.0, 0.0, 0.1, 0.5, 1.0,
+                                   0.9, 0.9, 0.9, 0.1, 0.0};
     //tv_old={0,0}
+
+    gettimeofday(&tv_now,NULL);
 
     pthread_mutex_lock(&WEATHER_LOCK);
 
     if(st->weather_image!=NULL){
-      cairo_set_source_surface(st->cr, st->weather_image, st->x, st->y);
+      cairo_set_source_surface(st->cr, st->weather_image, (int)st->x, (int)st->y);
       cairo_paint(st->cr);
     }
     /* CLOCK */
@@ -328,48 +342,74 @@ void draw_weather(state *st){
     time_str=get_time_str();
     cairo_text_extents (st->cr, time_str, &extents);
 
-    cairo_move_to (st->cr, st->x+(st->weather_width-extents.width)/2,
-                           st->y+WEATHER_IMAGE_H*5/2);
-    cairo_text_path (st->cr, time_str);
+    cairo_move_to (st->cr, (int)st->x+(st->weather_width-extents.width)/2,
+                           (int)st->y+WEATHER_IMAGE_H*5/2);
+    set_colour(st->cr, st->face_colour, (double)get_image_alpha()/255);
+    cairo_show_text(st->cr, time_str);
+    //cairo_paint_with_alpha(st->cr,1.0);
+
+    /* colon */
+    cairo_move_to (st->cr, (int)st->x+(st->weather_width-extents.width)/2+
+                           (extents.width/16)*12,
+                           (int)st->y+WEATHER_IMAGE_H*5/2);
+    set_colour(st->cr, st->face_colour, colon_color[tv_now.tv_usec/100000]*get_image_alpha()/255);
+    cairo_show_text(st->cr, " :");
+
 
     /* now playing */
-    gettimeofday(&tv_now,NULL);
-
     np_read=read_now_playing();
     wcsncpy(np,np_read,MAX_BUF*2-1);
     wcsncat(np,L" |",MAX_BUF*2-1);
     len=wcslen(np);
-//    np[len]=L'|';
-//    strncpy(np+len+1,np_read,MAX_BUF-len-2);
-    wcsncat(np,np_read,MAX_BUF*2-1);
-//    np[MAX_BUF-1]='\0';
+    if(len>2){
+      wcsncat(np,np_read,MAX_BUF*2-1);
 
-    pos=(tv_now.tv_sec*10+(tv_now.tv_usec/100000))/np_speed % (len>2?len:1);
+    // np_speed = how many chars will scroll in 10 seconds
+      shift=10*(tv_now.tv_sec+(tv_now.tv_usec/1000000.0))/np_speed;
+      pos=(long)shift % (len>2?len:1);
 
-    if(len<3)
-      np[0]=L'\0';
-    else
+//    mylog("%lf, %ld\n",shift,pos);
+      shift-=(long)shift;
+
       np[pos+len]=L'\0';
 
-    wcstombs(utf_np,np+pos,MAX_BUF*8);
-    cairo_move_to (st->cr, st->x+(st->weather_width-extents.width)/2,
-                           st->y+WEATHER_IMAGE_H*5/2+extents.height);
-    cairo_text_path (st->cr, utf_np);
+      wcstombs(utf_np,np+pos,MAX_BUF*8);
+      text_x=(int)st->x+(st->weather_width-extents.width)/2;
+      text_y=(int)st->y+WEATHER_IMAGE_H*5/2+extents.height+5;
 
+      first_char[0]=utf_np[0];
+      first_char[1]=L'\0';
+      cairo_text_extents (st->cr, (char *)utf_np, &extents);
 
+      now_playing_height=extents.height+5;
 
+      np_width_one=(long)extents.width/len;
+
+      cairo_move_to (st->cr, text_x-np_width_one*shift, text_y);
+//      cairo_text_path (st->cr, utf_np+1);
+      set_colour(st->cr, st->face_colour, (double)get_image_alpha()/255);
+      cairo_show_text (st->cr, utf_np+1);
+
+    /* first character of now playing with fading */
+      //set_colour(st->cr, st->face_colour, 0.4);//1.0-shift);
+      cairo_move_to (st->cr, text_x-np_width_one*(shift+1), text_y);
+//      cairo_text_path (st->cr, first_char);
+      set_colour(st->cr, st->face_colour, (1.0-shift)*get_image_alpha()/255);
+      cairo_show_text (st->cr, (char *)first_char);
+//      cairo_clip(st->cr);
+//      cairo_paint_with_alpha(st->cr, shift);
+    }
+    else{
+      now_playing_height=0;
+    }
+
+//    cairo_reset_clip(st->cr);
+    set_colour(st->cr, st->face_colour, (double)get_image_alpha()/255);
     cairo_set_font_size (st->cr, TM_FONT_SIZE);
     cairo_text_extents (st->cr, TM_STR, &extents);
-    cairo_move_to (st->cr, st->x+WEATHER_IMAGE_W,
-                           st->y+WEATHER_IMAGE_H-extents.height);
+    cairo_move_to (st->cr, (int)st->x+WEATHER_IMAGE_W,
+                           (int)st->y+WEATHER_IMAGE_H-extents.height);
     cairo_text_path (st->cr, TM_STR);
-/*
-    if((tv_now.tv_sec>tv_old.tv_sec)){
-      pos+=1;
-      tv_old.tv_usec=tv_now.tv_usec;
-      tv_old.tv_sec=tv_now.tv_sec;
-    }
-*/
 
     //cairo_set_source_rgba (st->cr, FONT_R, FONT_G, FONT_B, get_image_alpha());
     set_colour(st->cr, st->face_colour, (double)get_image_alpha()/255);
@@ -544,6 +584,7 @@ void count_clock_height(state *st){
 
 char *get_time_str(void)
 {
+//  static char2 timestring;
   static char timestring[MAX_TIME_STR];
   time_t t;
 
@@ -554,12 +595,12 @@ char *get_time_str(void)
     exit(1);
   }
 
-  if(t%2==0){
-    strftime(timestring, MAX_TIME_STR, "%a %d %b %H:%M",time_now);
-  }
-  else{
+//  if(t%2==0){
     strftime(timestring, MAX_TIME_STR, "%a %d %b %H %M",time_now);
-  }
+//  }
+//  else{
+//    strftime(timestring, MAX_TIME_STR, "%a %d %b %H %M",time_now);
+//  }
   return timestring;
 }
 

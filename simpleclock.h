@@ -75,8 +75,8 @@ typedef struct {
     int        width, height;
     /*double     radius;
     XY         centre;*/
-    int        x;
-    int        y;
+    double     x;
+    double     y;
     XY         orient;
     int        timer_id;
     weather_t  weather;
