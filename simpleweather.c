@@ -30,7 +30,7 @@
 
 #define unknown_string "Unknown..."
 
-#define SLEEP_INT_SEC 5
+#define SLEEP_INT_SEC 2
 
 static int def_weather_height=1024;
 static int def_weather_width=768;
@@ -125,15 +125,22 @@ void set_colour(cairo_t *cr, GdkColor colour, double alpha)
     cairo_set_source_rgba(cr, red, green, blue, alpha);
 }
 
-void mysleep(long time){
-  int i,alpha;
+/*
+* side effect!
+* updates image if needed
+*
+*/
+void mysleep(long time,state *st){
+  int i;
+  static int alpha=-1;
   /* sleep ... */
-  alpha=get_image_alpha();
+  //alpha=get_image_alpha();
   for(i=0;i<time; i+=SLEEP_INT_SEC){
     pthread_testcancel();
     sleep(SLEEP_INT_SEC);
     pthread_testcancel();
     if(alpha != get_image_alpha()){ /* update image! don't sleep! */
+      prepare_weather_image(st);
       return;
     }
   }
@@ -151,9 +158,9 @@ static void * weather_update_func(void *vst){
       switch(wcode){
 
       case 0:
-        mysleep(NORMAL_RETRY_TIME-RSS_RETRY_TIME);
+        mysleep(NORMAL_RETRY_TIME-RSS_RETRY_TIME,st);
       case RSS_RETRY:
-        mysleep(RSS_RETRY_TIME);
+        mysleep(RSS_RETRY_TIME,st);
       case NO_RETRY:
 
         /*get weather*/
@@ -225,7 +232,7 @@ static void * weather_update_func(void *vst){
         pthread_mutex_unlock(&WEATHER_LOCK);
         break;
       case IMAGE_RETRY:
-        mysleep(IMAGE_RETRY_TIME);
+        mysleep(IMAGE_RETRY_TIME,st);
         wcode=update_images(&tmp_weather);
         mylog("UPDATE_IMAGES: %d\n",wcode);
         break;
