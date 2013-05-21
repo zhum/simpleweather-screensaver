@@ -1,6 +1,6 @@
 CC = gcc
 
-EXTRAFLAGS = -DDEBUG -g
+EXTRAFLAGS = -DDEBUG -g -DDYNAMIC_ICON_LOAD
 #EXTRAFLAGS = 
 GIFS=iconsbest.com-icons
 #GIFS=yahoo-gifs

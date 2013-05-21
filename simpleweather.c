@@ -131,7 +131,7 @@ void set_colour(cairo_t *cr, GdkColor colour, double alpha)
 *
 */
 void mysleep(long time,state *st){
-  int i;
+  int i,newalpha;
   static int alpha=-1;
   /* sleep ... */
   //alpha=get_image_alpha();
@@ -139,7 +139,9 @@ void mysleep(long time,state *st){
     pthread_testcancel();
     sleep(SLEEP_INT_SEC);
     pthread_testcancel();
-    if(alpha != get_image_alpha()){ /* update image! don't sleep! */
+    newalpha=get_image_alpha();
+    if(alpha != newalpha){ /* update image! don't sleep! */
+      alpha=newalpha;
       pthread_mutex_lock(&WEATHER_LOCK);
       prepare_weather_image(st);
       pthread_mutex_unlock(&WEATHER_LOCK);
@@ -160,6 +162,7 @@ static void * weather_update_func(void *vst){
       switch(wcode){
 
       case 0:
+        mylog ("sleep %d\n",NORMAL_RETRY_TIME-RSS_RETRY_TIME);
         mysleep(NORMAL_RETRY_TIME-RSS_RETRY_TIME,st);
       case RSS_RETRY:
         mysleep(RSS_RETRY_TIME,st);
@@ -236,6 +239,11 @@ static void * weather_update_func(void *vst){
       case IMAGE_RETRY:
         mysleep(IMAGE_RETRY_TIME,st);
         wcode=update_images(&tmp_weather);
+
+        pthread_mutex_lock(&WEATHER_LOCK);
+        prepare_weather_image(st);
+        pthread_mutex_unlock(&WEATHER_LOCK);
+
         mylog("UPDATE_IMAGES: %d\n",wcode);
         break;
       }
@@ -332,7 +340,7 @@ void draw_weather(state *st){
     static struct timeval tv_now;
 
     static double colon_color[10]={0.1, 0.1, 0.0, 0.0, 1.0,
-                                   0.5, 0.8, 0.8, 0.8, 0.2};
+                                   0.5, 0.8, 0.8, 0.8, 0.8};
     //tv_old={0,0}
 
     gettimeofday(&tv_now,NULL);

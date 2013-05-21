@@ -11,6 +11,7 @@
 #include <iconv.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <dirent.h>
 #include "lib/include/mxml.h"
 
 #define BUFSIZE (1024*10)
@@ -41,6 +42,7 @@ FILE *load_icon_by_name(char *name);
 char *image_url(char *name);
 int get_cached_icon_index(char *name);
 int cache_icon_by_name(char *name);
+FILE *local_icon_by_name(char *name);
 int append_to_image_cache_by_path_and_name(char *path, char *name);
 int get_icon_index(char *name);
 void mylog(char *,...);
@@ -108,8 +110,7 @@ int load_weather(weather_t *weather){
     slist = curl_slist_append(slist, charset_h);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
 
-    mylog("HEADER: %s\n",charset_h);
-    mylog("URL: %s\n",url);
+    mylog("HEADER: %s; URL: %s\n",charset_h,url);
 
     res = curl_easy_perform(curl);
     /* always cleanup */
@@ -158,23 +159,6 @@ size_t header_parse( void *ptr, size_t size, size_t nmemb, void *userdata){
   }
   return size*nmemb;
 }
-/*
-    char *now_weather_text;
-    char *today_forecast_text;
-    char *tomorrow_forecast_text;
-
-    char *now_weather_icon;
-    char *today_forecast_icon;
-    char *tomorrow_forecast_icon;
-
-    int  now_image_index;
-    int  today_image_index;
-    int  tomorrow_image_index;
-
-    int  now_celsium;
-    int  today_celsium_high;
-    int  tomorrow_celsium_high;
-*/
 
 int get_code(const char * text){
   int i;
@@ -196,48 +180,45 @@ int get_code(const char * text){
 
 //!!!!!!!!!!!!! yahoo
 int parse_weather_yahoo(weather_t *w, char *buffer_orig){
-  //const char *section, *p,*p2;
-  //iconv_t cd;
-  //size_t insize,outsize;
-  int code;
+  int code,retcode=0;
   char img_buf[MAX_BUF];
 
   mxml_node_t *top, *tree, *node;
   const char *text;
-
-  //mylog("RSS: %s\n\n",buffer_orig);
 
   top = mxmlLoadString(NULL, buffer_orig, MXML_TEXT_CALLBACK);
   tree = mxmlFindElement(top, top, "item",NULL,NULL,MXML_DESCEND);
   node = mxmlFindElement(tree, top, "yweather:condition",NULL,NULL,MXML_DESCEND);
   text=mxmlElementGetAttr(node,"code");
   code=get_code(text);
+  mylog("Now code=%02d\n",code);
   if(code==NO_CODE)
     return RSS_RETRY;
-  mylog("Now code=%d ",code);
   w->now_weather_text=codes[lang][code+1];
   sprintf(img_buf,BASE_URL "%02d.gif",code);
   w->now_image_index=get_icon_index(img_buf);
-//  w->now_image_index=code;
-  if(w->now_image_index==-1)
-    return RSS_RETRY;
+  if(w->now_image_index==0)
+    retcode=IMAGE_RETRY;
+  else if(w->today_image_index<0)
+    retcode=0;
 
   text=mxmlElementGetAttr(node,"temp");
   sscanf(text,"%d",&(w->now_celsium));
 
   node = mxmlFindElement(tree, top, "yweather:forecast",NULL,NULL,MXML_DESCEND);
-//  node = mxmlFindElement(node, top, "yweather:forecast",NULL,NULL,MXML_DESCEND);
   text=mxmlElementGetAttr(node,"code");
   code=get_code(text);
+  mylog("Today code=%02d\n",code);
   if(code==NO_CODE)
     return RSS_RETRY;
-  mylog("Today code=%d ",code);
+
   w->today_forecast_text=codes[lang][code+1];
   sprintf(img_buf,BASE_URL "%02d.gif",code);
   w->today_image_index=get_icon_index(img_buf);
-//  w->today_image_index=code;
-  if(w->today_image_index==NO_CODE)
-    return RSS_RETRY;
+  if(w->today_image_index==0)
+    retcode=IMAGE_RETRY;
+  else if(w->today_image_index<0)
+    retcode=0;
 
   text=mxmlElementGetAttr(node,"low");
   sscanf(text,"%d",&(w->today_celsium_low));
@@ -251,14 +232,15 @@ int parse_weather_yahoo(weather_t *w, char *buffer_orig){
   code=get_code(text);
   if(code==NO_CODE)
     return RSS_RETRY;
-  mylog("Tomorrow code=%d\n",code);
   w->tomorrow_forecast_text=codes[lang][code+1];
   sprintf(img_buf,BASE_URL "%02d.gif",code);
   w->tomorrow_image_index=get_icon_index(img_buf);
 
 //  w->tomorrow_image_index=code;
-  if(w->tomorrow_image_index==NO_CODE)
-    return RSS_RETRY;
+  if(w->tomorrow_image_index==0)
+    retcode=IMAGE_RETRY;
+  else if(w->today_image_index<0)
+    retcode=0;
 
   text=mxmlElementGetAttr(node,"low");
   sscanf(text,"%d",&(w->tomorrow_celsium_low));
@@ -266,11 +248,11 @@ int parse_weather_yahoo(weather_t *w, char *buffer_orig){
   sscanf(text,"%d",&(w->tomorrow_celsium_high));
 
 
-#ifdef DYNAMIC_ICON_LOAD
+#ifdef YAHOO_DYNAMIC_ICON_LOAD
   node = mxmlFindElement(tree, tree, "description",NULL,NULL,MXML_DESCEND);
   node=mxmlGetFirstChild(node);
   text=mxmlGetElement(node);
-  //<img src="
+
   img=strstr(text,"<img src=\"");
   if(img==NULL)
     return RSS_RETRY;
@@ -293,11 +275,12 @@ int parse_weather_yahoo(weather_t *w, char *buffer_orig){
     w->now_image_index=get_icon_index(w->now_weather_icon);
   }
 #endif
-  #ifdef DEBUG
+#ifdef DEBUG
     print_weather(w);
-  #endif
-  return 0;
+#endif
+  return retcode;
 }
+
 void print_weather(weather_t *w){
 
   mylog("now: %d grad, %d %s %s\n", w->now_celsium, w->now_image_index,
@@ -311,10 +294,14 @@ void print_weather(weather_t *w){
 
 /* -1 if image not loaded yet... */
 int get_icon_index(char *name){
-
   int index;
 
-  index=get_cached_icon_index(name);
+  char *shortname,*c;
+  for(shortname=c=name;*c;++c){
+    if(*c=='/')
+      shortname=c+1;
+  }
+  index=get_cached_icon_index(shortname);
   if(index>0)
     return index;
 
@@ -330,6 +317,7 @@ int get_cached_icon_index(char *name){
       continue;
     return i;
   }
+  mylog("get_cached_icon failed. Name: '%s'\n",name);
   return 0;
 }
 
@@ -339,43 +327,44 @@ int cache_icon_by_name(char *name){
 
   int i;
   FILE *f;
-  char *lastname;
+  char *c,*lastname=name;
   char *filename;
 
   if(name[0]=='\0')
     return 0;
 
-  for(i=0;name[i]!='\0';++i){
-
-    if(name[i]=='/')
-      lastname=name+i+1;
+  for(c=name;*c;++c){
+    if(*c=='/')
+      lastname=c+1;
   }
-
   filename=malloc(strlen(cache_path)+strlen(lastname)+2);
-  if(filename==NULL){return 0;}
+  if(filename==NULL){mylog("Cannot malloc %d bytes...\n",strlen(cache_path)+strlen(lastname)+2);return 0;}
 
   /* path to cached image */
   strcpy(filename,cache_path);
-  filename[strlen(cache_path)]='/';
-  strcpy(filename+strlen(cache_path)+1,lastname);
+  strcat(filename,"/");
+  strcat(filename,lastname);
 
   f=fopen(filename,"r");
   if(f==NULL){
-#ifdef DYNAMIC_ICON_LOAD
-    /* file is not downloaded yet... */
-    f=load_icon_by_name(name);
+    f=local_icon_by_name(lastname);
     if(f==NULL){
-      free(filename);
-      return -1;
-    }
+#ifdef DYNAMIC_ICON_LOAD
+      /* file is not downloaded yet... */
+      f=load_icon_by_name(name);
+      if(f==NULL){
+        free(filename);
+        return -1;
+      }
 #else
-    mylog("Not in cache: %s\n",name);
-    return -1;
+      mylog("Not in cache: %s (%s)\n",name, lastname);
+      return -1;
 #endif
+    }
   }
   fclose(f);
-
   i=append_to_image_cache_by_path_and_name(filename,lastname);
+  mylog("Put in cache: %s (%s : %s) = %d\n",name,filename,lastname,i);
   free(filename);
   return i;
 
@@ -391,7 +380,7 @@ int append_to_image_cache_by_path_and_name(char *path, char *name){
   strcpy(weather_images_cache[last_cache_index].name,name);
   weather_images_cache[last_cache_index].image=
     gdk_pixbuf_new_from_file(path, NULL);
-  mylog("Loaded: %s, %p\n",path, weather_images_cache[last_cache_index].image);
+  mylog("Loaded: %s, %p, index=%d\n",path, weather_images_cache[last_cache_index].image,last_cache_index);
 
   if(weather_images_cache[last_cache_index].image==NULL){
     free(weather_images_cache[last_cache_index].name);
@@ -401,6 +390,24 @@ int append_to_image_cache_by_path_and_name(char *path, char *name){
   return last_cache_index-1;
 }
 
+/* try copy image from global cache to local */
+FILE *local_icon_by_name(char *name){
+  char src[MAX_BUF],buf[MAX_BUF];
+
+  strcpy(src,GIFS_DIR);
+  strcat(src,"/*");
+
+  sprintf(buf,"cp %s %s",src,cache_path);
+  mylog("SYSTEM: '%s'\n", buf);
+  system(buf);
+
+  strcpy(buf,cache_path);
+  strcat(buf,"/");
+  strcat(buf,name);
+
+  return fopen(buf,"r");
+}
+
 /* try to load image from internet */
 FILE *load_icon_by_name(char *name){
 
@@ -408,7 +415,7 @@ FILE *load_icon_by_name(char *name){
   CURLcode res;
   FILE *f;
   char *filename;
-  char *lastname;
+  char *lastname=name;
   int i;
 
   for(i=0;name[i]!='\0';++i){
@@ -418,7 +425,7 @@ FILE *load_icon_by_name(char *name){
   }
 
   filename=malloc(strlen(cache_path)+strlen(lastname)+2);
-  if(filename==NULL){return NULL;}
+  if(filename==NULL){mylog("Malloc failed\n");return NULL;}
 
   /* path to cached image */
   strcpy(filename,cache_path);
