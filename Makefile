@@ -22,10 +22,12 @@ OBJECTS = $(SOURCES:.c=.o)
 CFLAGS = `${PKG_CONFIG} ${GTK_METADATA} --cflags` -Wall -I. -I./libmxml/include -DGIFS_DIR=\"${SAVER_SHARE_DIR}\"
 LIBS   = `${PKG_CONFIG} ${GTK_METADATA} --libs` -lcurl ./libmxml/lib/libmxml.a
 
-$(TARGET): $(OBJECTS) ./libmxml/lib/libmxml.a weather_strings.h simpleclock.h
+$(TARGET): ./libmxml/lib/libmxml.a weather_strings.h simpleclock.h $(OBJECTS) 
 	$(CC) $(CFLAGS) $(EXTRAFLAGS) -o $@ $(OBJECTS) $(LIBS)
+
 .c.o:
 	$(CC) $(CFLAGS) $(EXTRAFLAGS) -c $< -o $@
+
 ./libmxml/lib/libmxml.a:
 	tar xfz libmxml.tgz
 	cd mxml-2.7; ./configure --prefix=`pwd`/../libmxml && make && make install
