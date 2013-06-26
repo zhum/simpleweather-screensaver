@@ -23,8 +23,6 @@
  * Originally written by: Ray Strode <rstrode@redhat.com>
  */
 
-#include "config.h"
-
 #include <errno.h>
 #include <stdlib.h>
 
