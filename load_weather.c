@@ -12,7 +12,7 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <dirent.h>
-#include "lib/include/mxml.h"
+#include "mxml.h"
 
 #define BUFSIZE (1024*10)
 
