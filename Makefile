@@ -36,7 +36,9 @@ clean:
 	rm -f $(OBJECTS) $(TARGET) core* *.o *~
 
 install:
-	${INSTALL} -s -D -m 0755 ${TARGET}  ${SAVER_EXE_DIR}
-	${INSTALL}    -D -m 0644 ${GIFS}/*.gif ${SAVER_SHARE_DIR}
+	[ -d "${SAVER_EXE_DIR}" ] || ${INSTALL} -m 0755 -d ${SAVER_EXE_DIR}
+	[ -d "${SAVER_SHARE_DIR}" ] || ${INSTALL} -m 0755 -d ${SAVER_SHARE_DIR}
+	${INSTALL} -s -m 0755 ${TARGET}  ${SAVER_EXE_DIR}
+	${INSTALL}    -m 0644 ${GIFS}/*.gif ${SAVER_SHARE_DIR}
 
 #	${INSTALL}    -m 0644 ${DESKTOP} ${GS_DESKTOP_DIR}
