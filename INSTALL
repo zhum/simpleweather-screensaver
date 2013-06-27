@@ -5,4 +5,17 @@ The shell commands `make; make install' should build and install this package.
 Fix Makefile in accordance with your environment.
 
 To use as screensaver, you must install and activate xscreensaver and its module xxcheater.
-Patch for xxcheater is here in file xxcheater.tgz
+Patch for xxcheater: xxcheater.patch
+
+Get xscreensaver sources (e.g. apt-get source xscreensaver), apply patch, then execute
+./configure; make or run dpkg-buildpackage.
+
+Find executable 'xxcheater' in hacks directory and copy it into /usr/lib/xscreensaver/
+Copy simpleweather executable to /usr/lib/xscreensaver/xx_simpleweather (note xx_ prefix!).
+
+Now you can run xscreensaver-demo and select xxcheater, go to advanced settings and set simpleweather as parameter.
+
+That's all!
+
+
+

@@ -1,0 +1,384 @@
+diff -Nura xscreensaver-5.15/hacks/Makefile.in xscreensaver-5.15.patched/hacks/Makefile.in
+--- xscreensaver-5.15/hacks/Makefile.in	2011-10-06 00:51:17.000000000 +0400
++++ xscreensaver-5.15.patched/hacks/Makefile.in	2013-06-27 18:02:12.000000000 +0400
+@@ -112,7 +112,8 @@
+ 		  intermomentary.c fireworkx.c fireworkx_mmx.S fiberlamp.c \
+ 		  boxfit.c interaggregate.c celtic.c cwaves.c m6502.c \
+ 		  asm6502.c abstractile.c lcdscrub.c \
+-		  webcollage-cocoa.m webcollage-helper-cocoa.m
++		  webcollage-cocoa.m webcollage-helper-cocoa.m \
++		  xxcheater.c
+ SCRIPTS		= vidwhacker webcollage ljlatest
+ 
+ # Programs that are mentioned in XScreenSaver.ad, and that have XML files,
+@@ -151,7 +152,7 @@
+ 		  intermomentary.o fireworkx.o fiberlamp.o boxfit.o \
+ 		  interaggregate.o celtic.o cwaves.o webcollage-cocoa.o \
+ 		  webcollage-helper-cocoa.o m6502.o asm6502.o abstractile.o \
+-		  lcdscrub.o
++		  lcdscrub.o xxcheater.o
+ 
+ EXES		= attraction blitspin bouboule braid decayscreen deco \
+ 		  drift flame galaxy grav greynetic halo \
+@@ -172,7 +173,7 @@
+ 		  fontglide apple2 xanalogtv pong  wormhole \
+ 		  pacman fuzzyflakes anemotaxis memscroller substrate \
+ 		  intermomentary fireworkx fiberlamp boxfit interaggregate \
+-		  celtic cwaves m6502 abstractile lcdscrub \
++		  celtic cwaves m6502 abstractile lcdscrub xxcheater \
+ 		  @JPEG_EXES@
+ JPEG_EXES	= webcollage-helper
+ 
+@@ -967,6 +968,9 @@
+ webcollage-helper: webcollage-helper.o
+ 	$(CC_HACK) -o $@ $@.o	$(XPM_LIBS) $(JPEG_LIBS)
+ 
++xxcheater:	xxcheater.o	$(HACK_OBJS) $(COL) $(DBE)
++	$(CC_HACK) -o $@ $@.o	$(HACK_OBJS) $(COL) $(DBE) $(HACK_LIBS)
++
+ 
+ ##############################################################################
+ #
+diff -Nura xscreensaver-5.15/hacks/xxcheater.c xscreensaver-5.15.patched/hacks/xxcheater.c
+--- xscreensaver-5.15/hacks/xxcheater.c	1970-01-01 03:00:00.000000000 +0300
++++ xscreensaver-5.15.patched/hacks/xxcheater.c	2013-06-27 18:02:54.000000000 +0400
+@@ -0,0 +1,283 @@
++/* xxcheater (C) 2011 Sergey Zhumatiy (serg@guru.ru)
++ *
++ * Permission to use, copy, modify, distribute, and sell this software and its
++ * documentation for any purpose is hereby granted without fee, provided that
++ * the above copyright notice appear in all copies and that both that
++ * copyright notice and this permission notice appear in supporting
++ * documentation.  No representations are made about the suitability of this
++ * software for any purpose.  It is provided "as is" without express or
++ * implied warranty.
++ */
++
++/*------------------------------------------------------------------------
++  |
++  |  FILE            xxcheater.c
++  |  MODULE OF       xscreensaver
++  |
++  |  DESCRIPTION     Cheater module - runs another program and shows it as
++                      screensaver
++  |
++  |  WRITTEN BY      Sergey Zhumatiy
++  |                  
++  |
++  |  MODIFICATIONS   november 2011 - start
++  |                  december 2011 - 1st stable version
++  |                  october  2012 - configurator added
++  +----------------------------------------------------------------------*/
++
++
++#include "screenhack.h"
++#include <sys/types.h>
++#include <signal.h>
++/*#include <syslog.h>*/
++#include <stdio.h>
++#include <stdlib.h>
++
++#define MAX_EXE_PATH 1024
++
++#define XEMBED_EMBEDDED_NOTIFY  0
++#define XEMBED_WINDOW_ACTIVATE  1
++#define XEMBED_WINDOW_DEACTIVATE  2
++#define XEMBED_REQUEST_FOCUS 3
++#define XEMBED_FOCUS_IN  4
++#define XEMBED_FOCUS_OUT  5
++#define XEMBED_FOCUS_NEXT 6
++#define XEMBED_FOCUS_PREV 7
++#define XEMBED_MODALITY_ON 10
++#define XEMBED_MODALITY_OFF 11
++
++#define TRUE 1
++#define FALSE 0
++
++#ifndef DEFAULT_PATH_PREFIX
++#define DEFAULT_PATH_PREFIX "/usr/lib/xscreensaver"
++#endif
++
++int sigs[]={SIGINT,SIGTERM};
++/*,SIGHUP,SIGQUIT,SIGILL,SIGTRAP,
++            SIGABRT,SIGBUS,SIGFPE,SIGUSR1,SIGSEGV,SIGUSR2,SIGPIPE,SIGALRM,
++            SIGCHLD,SIGCONT,SIGSTOP,SIGTSTP,SIGTTIN,SIGTTOU,SIGURG,SIGXCPU,
++            SIGXFSZ,SIGVTALRM,SIGPROF,SIGWINCH,SIGIO,SIGPWR};
++*/
++struct state *global_st=NULL;
++void signal_callback_handler(int signum);
++
++struct state {
++  Display *dpy;
++
++  int scrWidth, scrHeight;
++  GC gcDraw, gcClear;
++
++  pid_t  child_pid;
++  Window child_win;
++  FILE   *child_fd;
++  int    resized;
++  char   executable[MAX_EXE_PATH];
++};
++
++int spawn_child(Display *dpy, Window window, struct state *st);
++void send_xembed_message(
++     Display* dpy, /* display */
++     Window w, /* receiver */
++     long message, /* message opcode */
++     long detail,  /* message detail */
++     long data1,   /* message data 1 */
++     long data2    /* message data 2 */);
++
++static void *xxcheater_init (Display *dpy, Window window)
++{
++  struct state *st = (struct state *) calloc (1, sizeof(*st));
++  XWindowAttributes wa;
++  XGCValues gcv;
++  GC gc;
++  int i;
++
++  char *exe=get_string_resource(dpy,"exe","Exe");
++  strcpy(st->executable,DEFAULT_PATH_PREFIX);
++  strcat(st->executable,"/xx_");
++  strcat(st->executable,exe);
++  gcv.function = GXcopy;
++  gcv.subwindow_mode = IncludeInferiors;
++
++  st->dpy = dpy;
++
++  XGetWindowAttributes(st->dpy, window, &wa);
++  st->scrWidth = wa.width;
++  st->scrHeight = wa.height;
++
++  gc=XCreateGC(dpy, window, GCForeground|GCFunction|GCSubwindowMode, &gcv);
++  XSetSubwindowMode (st->dpy, gc, ClipByChildren);
++
++  /*openlog("xxcheater",0,LOG_USER);
++  syslog(LOG_WARNING,"init: w=%d,h=%d",wa.width,wa.height);*/
++
++   for(i=0;i<sizeof(sigs);++i)
++     signal(sigs[i], signal_callback_handler);
++
++  global_st=st; /* Ohh, GOD, I need to use it, SORRY!!! */
++
++  /* now prepare executable */
++  if(spawn_child(dpy,window,st)){
++    perror("Cannot spawn child process");
++  }
++
++  st->resized=0;
++  return st;
++}
++
++int spawn_child(Display *dpy, Window window, struct state *st){
++
++  FILE *f;
++  long pid,win;
++  char buf[1024];
++
++  f=popen(st->executable, "r");
++  if(f==NULL){
++    st->child_pid=0;
++    return -1;
++  }
++
++  st->child_fd=f;
++  /* read pid and window id */
++  fgets(buf,1024,f);
++
++  if(sscanf(buf,"%ld,%ld",&pid,&win)<2 || 1){
++    st->child_pid=pid;
++    st->child_win=win;
++    /*printf("PID=%ld, WIN=%ld\n",pid,win);
++    fflush(NULL);*/
++  }
++  else{
++    printf("Cannot parse child answer...\n");
++    st->child_pid=0;
++    pclose(f);
++    return -1;
++  }
++  
++  /* Embed window! */
++  XReparentWindow(dpy, win, window, 0, 0);
++  send_xembed_message(dpy,win,XEMBED_EMBEDDED_NOTIFY,
++                      0,window,0);
++/*
++  send_xembed_message(dpy,win,XEMBED_FOCUS_IN,
++                      0,window,0);
++
++  send_xembed_message(dpy,win,XEMBED_WINDOW_ACTIVATE,
++                      0,window,0);
++*/
++  XMapWindow(dpy,win);
++
++  return 0;
++}
++
++
++void send_xembed_message(
++     Display* dpy, /* display */
++     Window w, /* receiver */
++     long message, /* message opcode */
++     long detail,  /* message detail */
++     long data1,   /* message data 1 */
++     long data2    /* message data 2 */
++){
++    XEvent ev;
++    memset(&ev, 0, sizeof(ev));
++    ev.xclient.type = ClientMessage;
++    ev.xclient.window = w;
++    ev.xclient.message_type = XInternAtom( dpy, "_XEMBED", False );
++    ev.xclient.format = 32;
++    ev.xclient.data.l[0] = time(NULL);
++    ev.xclient.data.l[1] = message;
++    ev.xclient.data.l[2] = detail;
++    ev.xclient.data.l[3] = data1;
++    ev.xclient.data.l[4] = data2;
++    /* trap_errors(); */
++    XSendEvent(dpy, w, False, NoEventMask, &ev);
++    XSync(dpy, False);
++    /*
++    if (untrap_errors()) {
++    }
++    */
++}
++
++static unsigned long
++xxcheater_draw (Display *dpy, Window window, void *closure)
++{
++  struct state *st = (struct state *) closure;
++  if(st->child_win==0)
++    return 100000;
++
++  if(st->resized>1)
++    return 100000;
++
++  st->resized+=1;
++  /*syslog(LOG_WARNING,"draw w=%d,h=%d",st->scrWidth,st->scrHeight);*/
++  XResizeWindow(dpy,st->child_win,st->scrWidth,st->scrHeight);
++
++  return 100000;
++}
++
++
++static void
++xxcheater_reshape (Display *dpy, Window window, void *closure, 
++                 unsigned int w, unsigned int h)
++{
++  struct state *st = (struct state *) closure;
++  if(st->child_win==0)
++    return;
++
++  st->scrWidth=w;
++  st->scrHeight=h;
++  XResizeWindow(dpy,st->child_win,w,h);
++  /*syslog(LOG_WARNING,"reshape w=%d,h=%d",st->scrWidth,st->scrHeight);*/
++}
++
++static Bool
++xxcheater_event (Display *dpy, Window window, void *closure, XEvent *event)
++{
++  return False;
++}
++
++static void
++xxcheater_free (Display *dpy, Window window, void *closure)
++{
++  struct state *st = (struct state *) closure;
++
++  /*syslog(LOG_WARNING,"free pid=%ld",(long)st->child_pid);*/
++  if(st->child_pid!=0){
++    kill(st->child_pid,9);
++    pclose(st->child_fd);
++  }
++  free (st);
++}
++
++
++
++static const char *xxcheater_defaults [] = {
++  ".background: black",
++  "*exe: /tmp/ch",
++  0
++};
++
++
++static XrmOptionDescRec xxcheater_options [] = {
++  { "-exe",         ".exe",         XrmoptionSepArg, 0 },
++  { 0, 0, 0, 0 }
++};
++
++
++void signal_callback_handler(int signum)
++{
++   /*printf("Caught signal %d\n",signum);
++   syslog(LOG_WARNING,"signal: %d",signum);*/
++
++   if(signum==SIGTERM){
++     if(global_st){
++        xxcheater_free (NULL,(Window)NULL,global_st);
++     }
++     exit(signum);
++   }
++}
++
++
++
++XSCREENSAVER_MODULE ("XXcheater", xxcheater)
+diff -Nura xscreensaver-5.15/hacks/xxcheater.man xscreensaver-5.15.patched/hacks/xxcheater.man
+--- xscreensaver-5.15/hacks/xxcheater.man	1970-01-01 03:00:00.000000000 +0300
++++ xscreensaver-5.15.patched/hacks/xxcheater.man	2012-10-02 18:35:21.000000000 +0400
+@@ -0,0 +1,52 @@
++.TH XScreenSaver 1 "18-Jan-2012" "X Version 11"
++.SH NAME
++xxcheater - runs any external screensaver
++.SH SYNOPSIS
++.B xxcheater
++\-exe \fIexecutable\fP [options]
++.SH DESCRIPTION
++The \fIxxcheater\fP program runs external screensaver. It must be
++installed in xscreensaver directory with prefix 'xx_'.
++
++For example, if you have created screensaver 'my_saver', you
++must install it into XSCREENSAVER_DIR/xx_my_saver. In xscreensaver config
++dialog enter 'my_saver' in exe field. You can add any commandline
++arguments via space.
++
++External screensaver must use XEmbed protocol and must print
++its XWindow id and pid.
++
++.SH OPTIONS
++.I xxcheater
++accepts the one option:
++.TP 8
++.B \-exe executable
++Name (not path!) of external screensaver
++.TP 8
++.B options
++All other options will be passed to executable.
++.TP 8
++.SH ENVIRONMENT
++.PP
++.TP 8
++.B DISPLAY
++to get the default host and display number.
++.TP 8
++.B XENVIRONMENT
++to get the name of a resource file that overrides the global resources
++stored in the RESOURCE_MANAGER property.
++.SH SEE ALSO
++.BR X (1),
++.BR xscreensaver (1),
++.BR xscreensaver\-demo (1),
++.BR xscreensaver\-getimage (1)
++.SH COPYRIGHT
++Copyright \(co 2012 by Sergey Zhumatiy.  Permission to use, copy, modify, 
++distribute, and sell this software and its documentation for any purpose is 
++hereby granted without fee, provided that the above copyright notice appear 
++in all copies and that both that copyright notice and this permission notice
++appear in supporting documentation.  No representations are made about the 
++suitability of this software for any purpose.  It is provided "as is" without
++express or implied warranty.
++.SH AUTHOR
++Sergey Shumatiy <serg@guru.ru>, 18-Jan-2012.
