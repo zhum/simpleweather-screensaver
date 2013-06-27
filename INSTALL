@@ -3,3 +3,6 @@ Installation Instruction
 
 The shell commands `make; make install' should build and install this package.
 Fix Makefile in accordance with your environment.
+
+To use as screensaver, you must install and activate xscreensaver and its module xxcheater.
+Patch for xxcheater is here in file xxcheater.tgz
